@@ -4,8 +4,10 @@
 # @Author  : xiaowa
 
 
-BOARD_SIZE = 8
+BOARD_SIZE = 4
 BLACK = 1
 WHITE = -1
 BLANK = -0
 PLAYER_NUM = 2
+
+OX_BOARD_SIZE = 3

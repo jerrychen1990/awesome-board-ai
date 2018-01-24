@@ -2,14 +2,13 @@
 # -*- coding: utf-8 -*-
 # @Time    : 1/11/18 7:16 PM
 # @Author  : xiaowa
-from prop import BOARD_SIZE, BLANK, BLACK, WHITE
-from player import BasePlayer
+from config import BOARD_SIZE, BLANK, BLACK, WHITE
 import random
+from logger import LOGGER
 
 
 def get_valid_points(board, piece):
     valid_points = []
-
     for r in range(len(board)):
         line = board[r]
         for c in range(len(line)):
@@ -62,19 +61,29 @@ def get_valid_targets(board, r, c, piece):
     return valid_targets
 
 
+def board2str(board):
+    rs_str = "\n"
+    for line in board:
+        line_str = u" ".join([u"%3.0d" % e for e in line])
+        line_str += u"\n"
+        rs_str += line_str
+    return rs_str
+
+
 class Othello:
     piece_pool = [BLACK, WHITE]
     player_num = 2
 
     def __init__(self):
         self.board_size = BOARD_SIZE
-        self.board = []
         self.round = 0
         self.players = []
-        self.piece_dict = {}
+        self.board = []
+        self.init_board()
 
-
+    def init_board(self):
         # init board
+        self.board = []
         half_small = int(self.board_size / 2) - 1
         half_big = int(self.board_size / 2)
         for i in range(self.board_size):
@@ -83,13 +92,6 @@ class Othello:
         self.board[half_big][half_big] = BLACK
         self.board[half_small][half_big] = WHITE
         self.board[half_big][half_small] = WHITE
-
-    def show(self):
-        # print(u"current round:{}".format(self.round))
-        print(u"current board")
-        for line in self.board:
-            line_str = u" ".join([u"%3.0d" % e for e in line])
-            print(line_str)
 
     def add_player(self, player):
         self.players.append(player)
@@ -106,45 +108,73 @@ class Othello:
 
     def start(self):
         if len(self.players) != Othello.player_num:
-            print(u"invalid player num:{}, expected:{}".format(len(self.players, Othello.player_num)))
+            LOGGER.error(u"invalid player num:{}, expected:{}".format(len(self.players), Othello.player_num))
             return
-        print(u"Othello game started!")
-        print(u"choosing player...")
-        idx = random.randint(0, Othello.player_num - 1)
-        for p in self.piece_pool:
-            self.piece_dict[p] = self.players[idx % len(self.players)]
-            idx += 1
+        LOGGER.info(u"Othello game started!")
+        LOGGER.info(u"choosing player...")
+
+        offset = random.randint(0, Othello.player_num - 1)
+
+        for idx, p in enumerate(self.piece_pool):
+            tmp_player = self.players[(idx + offset) % len(self.players)]
+            # self.piece_dict[p] = tmp_player
+            tmp_player.set_piece(p)
+
         self.round = 0
         pass_time = 0
+        LOGGER.info(u"start moving...")
+        last_player = None
 
-        idx = 0
         while True:
-            piece = self.piece_pool[idx % len(self.piece_pool)]
-            cur_player = self.piece_dict[piece]
-
             if pass_time == len(self.players):
-                print(u"game finish!")
-                score = get_score(self.board)
-                if score > 0:
-                    print(u"BLACK[player:{}] WIN WITH SCORE={}!".format(self.piece_dict[BLACK], score))
-                elif score < 0:
-                    print(u"WHITE[player:{}] WIN! WITH SCORE={}".format(self.piece_dict[WHITE], -score))
-                else:
-                    print(u"THIS IS A DRAW GAME!")
+                LOGGER.info(u"all players has no way to go, game is finished!")
                 break
+            cur_player = self.players[(self.round + offset) % len(self.players)]
+            cur_piece = cur_player.piece
+            if last_player:
+                last_player.notify_status(self.board, cur_piece)
 
-            valid_points = get_valid_points(self.board, piece)
+            self.round += 1
+            LOGGER.debug(u"current board")
+            LOGGER.debug(board2str(self.board))
+            valid_points = get_valid_points(self.board, cur_piece)
+            LOGGER.debug(u"valid points:{}".format(valid_points))
+            LOGGER.info(u"round{} player[{}] putting {} ".format(self.round, cur_player, cur_player.piece))
+
             if not valid_points:
-                print(u"player:{} has no way to go".format(cur_player))
+                valid_points.append((None, None))
+            action = cur_player.play(valid_points, self.board)
+            last_player = cur_player
+            if action not in valid_points:
+                LOGGER.error("invalid action :{}, pass this round".format(action))
                 pass_time += 1
-            else:
-                self.round += 1
-                print(u"round{} player:{} playing...".format(self.round, cur_player))
-                r, c = cur_player.play(valid_points, self.board, piece)
-                print(u"{} put {} to  point({},{}))".format(cur_player, piece, r, c))
-                self.put_piece(r, c, piece)
-                pass_time = 0
-                self.show()
-            idx += 1
+                continue
+            if action == (None, None):
+                LOGGER.info(u"player[{}] has no way to go".format(cur_player))
+                pass_time += 1
+                continue
 
+            LOGGER.info(u"player[{}] put {} to point {}".format(cur_player, cur_piece, action))
+            self.put_piece(action[0], action[1], cur_piece)
+            pass_time = 0
 
+        score = get_score(self.board)
+        if score > 0:
+            win_piece = BLACK
+        elif score < 0:
+            win_piece = WHITE
+        else:
+            win_piece = None
+            LOGGER.info(u"THIS IS A DRAW GAME!")
+
+        winner = None
+        if win_piece:
+            for player in self.players:
+                LOGGER.debug(u"notifying player[{}] of reward".format(player))
+                player.notify_win(win_piece)
+                if player.piece == win_piece:
+                    LOGGER.info(u"piece:{}[player:{}] WIN! WITH SCORE={}".format(win_piece, player, abs(score)))
+                    winner = player
+
+        LOGGER.info(u"game finish!")
+        return winner
