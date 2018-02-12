@@ -2,14 +2,16 @@
 # -*- coding: utf-8 -*-
 # @Time    : 1/12/18 2:45 PM
 # @Author  : xiaowa
-import math
 import common
 import copy
 from logger import LOGGER
 import random
+import json
 
 
 class MCST_NODE:
+    SMOOTH = 0.001
+
     def __init__(self, status=None):
         self.status = copy.deepcopy(status)
         self.piece = status[1]
@@ -30,20 +32,19 @@ class MCST_NODE:
         return score
 
     def select(self, mark_piece, c):
-        smooth = 0.01
-        father_visit = self.visit_time + len(self.action_dict.items()) * smooth
+        def get_score(node, c_value, total, is_same_piece):
+            return node.get_value(is_same_piece) + c_value * pow((1 / (node.visit_time + self.SMOOTH)), 0.5)
 
-        def get_score(node, c_value, fv, is_same_piece):
-            return node.get_value(is_same_piece) + c_value * pow((math.log(fv) / (node.visit_time + smooth)), 0.5)
-
-        select_list = [(action, node, get_score(node, c, father_visit, self.piece == mark_piece)) for action, node in
+        total_visit = sum([node.visit_time for node in self.action_dict.values()])
+        select_list = [(action, node, get_score(node, c, total_visit, self.piece == mark_piece)) for action, node in
                        self.action_dict.items()]
 
         _, _, max_score = max(select_list, key=lambda e: e[2])
         sorted_select_list = sorted(select_list, key=lambda e: e[2], reverse=True)
 
-        LOGGER.info(u"|".join("{}:[{}/{}]{:.3f}".format(action, node.win_time, node.visit_time,
-                                                        value) for action, node, value in sorted_select_list))
+        LOGGER.info(u"|".join("{}:[{}/{}({:.3f})]{:.3f}".format(action, node.win_time, node.visit_time,
+                                                                node.get_value(self.piece == mark_piece),
+                                                                value) for action, node, value in sorted_select_list))
         max_nodes = [e for e in sorted_select_list if e[2] == max_score]
 
         selected = random.choice(max_nodes)
@@ -85,9 +86,19 @@ class MCST:
         _, next_node, _ = node.select(mark_piece=self.mark_piece, c=self.c)
         return self.selection(next_node)
 
-    @staticmethod
-    def expansion(node, action_list, transform_func):
-        node.expand(action_list=action_list, transform_func=transform_func)
+    def expansion(self, node, action_list, transform_func):
+        for action in action_list:
+            next_status = transform_func(status=node.status, action=action)
+            next_node = self.search_node(next_status)
+            node.action_dict[action] = next_node
+
+    def search_node(self, status):
+        status_key = str(status)
+        if status_key in self.node_dict.keys():
+            return self.node_dict.get(status_key)
+        new_node = MCST_NODE(status=status)
+        self.node_dict[status_key] = new_node
+        return new_node
 
     def back_progression(self, win_piece):
         win_score = 0
@@ -110,14 +121,9 @@ class MCST:
         self.node_stack = []
         leaf_node = self.selection(self.root_node)
         is_finish, win_piece = game.judge(leaf_node.status)
-        if is_finish:
-            LOGGER.info("game finish")
-            self.back_progression(win_piece)
-            return
-        action_list = game.get_action_list(leaf_node.status)
-        self.expansion(node=leaf_node, action_list=action_list, transform_func=game.transform)
-        new_node = leaf_node.rand_select()
-        self.node_stack.append(new_node)
-        win_piece = game.fast_finish(status=new_node.status, move_func=game.fast_move)
+        if not is_finish:
+            action_list = game.get_action_list(leaf_node.status)
+            self.expansion(node=leaf_node, action_list=action_list, transform_func=game.transform)
+            win_piece = game.fast_finish(status=leaf_node.status, move_func=game.fast_move)
         LOGGER.info("{} win".format(win_piece))
         self.back_progression(win_piece)

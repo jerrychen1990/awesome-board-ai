@@ -3,12 +3,36 @@
 # @Time    : 1/11/18 7:33 PM
 # @Author  : xiaowa
 import random
-import copy
+from abc import abstractmethod
 import common
 from logger import LOGGER
 
 
-class BasePlayer:
+class IPlayer:
+    def __init__(self, n):
+        self.name = n
+        self.piece = None
+
+    @abstractmethod
+    def play(self, valid_points, board):
+        pass
+
+    @abstractmethod
+    def notify_win(self, win_piece):
+        pass
+
+    @abstractmethod
+    def notify_status(self, board, piece):
+        pass
+
+    def set_piece(self, piece):
+        self.piece = piece
+
+    def __repr__(self):
+        return self.name
+
+
+class RandPlayer(IPlayer):
     def __init__(self, n):
         self.name = n
         self.piece = None
@@ -22,14 +46,39 @@ class BasePlayer:
     def notify_status(self, board, piece):
         pass
 
-    def set_piece(self, piece):
-        self.piece = piece
 
-    def __repr__(self):
-        return self.name
+class FastPlayer(IPlayer):
+    def __init__(self, n, fast_func):
+        super(FastPlayer, self).__init__(n)
+        self.fast_func = fast_func
+
+    def play(self, valid_points, board):
+        return self.fast_func((board, self.piece), valid_points)
+
+    def notify_win(self, win_piece):
+        pass
+
+    def notify_status(self, board, piece):
+        pass
 
 
-class MCSTPlayer(BasePlayer):
+class HumanPlayer(IPlayer):
+    def play(self, valid_points, board):
+        while True:
+            action_str = input("action: >>>\n")
+            action = tuple([int(e) for e in action_str.split(",")])
+            if action in valid_points:
+                return action
+            LOGGER.warn("invalid action:{}".format(action))
+
+    def notify_status(self, board, piece):
+        pass
+
+    def notify_win(self, win_piece):
+        pass
+
+
+class MCSTPlayer(IPlayer):
     @staticmethod
     def hash_status(status):
         board = status[0]
@@ -39,7 +88,7 @@ class MCSTPlayer(BasePlayer):
         return hash_value
 
     def __init__(self, n, mcst, fast_move_func, is_train=False):
-        BasePlayer.__init__(self, n)
+        IPlayer.__init__(self, n)
         self.mcst = mcst
         self.cur_node = mcst.root_node
         self.cur_action = None

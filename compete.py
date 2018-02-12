@@ -4,7 +4,7 @@
 # @Author  : xiaowa
 import train
 import collections
-from player import BasePlayer, MCSTPlayer
+from player import MCSTPlayer, RandPlayer, HumanPlayer, FastPlayer
 from logger import LOGGER
 from game import OxGame
 
@@ -18,16 +18,19 @@ def compete(game, p1, p2, compete_round=100):
         LOGGER.info("compete round[{}]".format(rd))
         compete_game.init_board()
         winner = compete_game.start()
+        if winner is None:
+            winner = "draw"
         player_board[winner] += 1
-    LOGGER.info("compete result, player_board:{}".format(player_board))
+    LOGGER.info("compete result, player_board:{}".format(dict(player_board)))
 
 
 if __name__ == u'__main__':
     the_game = OxGame()
-    train_round = 100
-    mcst = train.train_mcst(the_game, 1000)
+    train_round = 5000
+    mcst = train.train_mcst(the_game, train_round)
     LOGGER.info("after {} round training, mcts's explored node num:{}".format(train_round, len(mcst.node_dict.keys())))
 
     player1 = MCSTPlayer(n="mcts-player", mcst=mcst, fast_move_func=the_game.fast_move)
-    player2 = BasePlayer(n="rand-player")
+    player2 = FastPlayer(n="fast-player", fast_func=the_game.fast_move)
+    player3 = HumanPlayer(n="human-player")
     compete(OxGame, player1, player2, compete_round=100)
